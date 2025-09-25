@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 import json
+from collections import defaultdict
 from urllib.parse import urljoin
 from requests.adapters import HTTPAdapter
 from urllib3.util.ssl_ import create_urllib3_context
@@ -46,7 +47,7 @@ def get_monitoring_list_ids():
     return response.json()
 
 def get_monitoring_list_details(list_id):
-    url = urljoin(API_BASE_URL, f"common/monitoring_lists/{list_id}")
+    url = urljoin(API_BASE_URL, f"common/monitoring_lists/{list_id}/components")
     response = session.get(url)
     if response.status_code == 200:
         return response.json()
@@ -54,10 +55,26 @@ def get_monitoring_list_details(list_id):
         print(f"Warning: Could not fetch details for ID {list_id}")
         return None
 
-def export_to_excel(data, filename="monitoring_lists.xlsx"):
-    df = pd.DataFrame(data)
+# === Unique Component and its Usages ===
+def uniqueComponentUsages():
+    monitoring_dict = {}
+    for list_id in get_monitoring_list_ids():
+        components = get_monitoring_list_details(list_id)
+        monitoring_dict[list_id] = components
+
+    component_usage = defaultdict(int)
+    for list_id, components in monitoring_dict.items():
+        unique_components = set(components)
+        for component in unique_components:
+            component_usage[component] += 1
+
+    component_usage = dict(component_usage)
+    return component_usage
+
+def export_to_excel(component_usage, filename="monitoring_lists.xlsx"):
+    df = pd.DataFrame(list(component_usage.items()), columns=['Component', 'Usage Count'])
     df.to_excel(filename, index=False)
-    print(f"Exported {len(data)} records to {filename}")
+    print(f"Exported {len(component_usage)} records to {filename}")
 
 def export_to_json(data, filename="monitoring_lists.json"):
     with open(filename, 'w', encoding="utf-8") as f:
@@ -65,18 +82,11 @@ def export_to_json(data, filename="monitoring_lists.json"):
     print(f"Exported {len(data)} records to {filename}")
 
 def main():
-    ids = get_monitoring_list_ids()
-    all_details = []
-    for list_id in ids:
-        details = get_monitoring_list_details(list_id)
-        if details:
-            if 'id' not in details:
-                details['id'] = list_id
-            all_details.append(details)
+    unique_usage_dict = uniqueComponentUsages()
 
-    if all_details:
-        export_to_excel(all_details)
-        export_to_json(all_details)
+    if unique_usage_dict:
+        export_to_excel(unique_usage_dict)
+        export_to_json(unique_usage_dict)
     else:
         print("No data to export.")
 
