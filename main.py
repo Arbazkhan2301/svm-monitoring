@@ -39,7 +39,6 @@ adapter = SSLAdapterWithPassphrase(
 session.mount('https://', adapter)
 
 # === Functions ===
-
 def get_monitoring_list_ids():
     url = urljoin(API_BASE_URL, "common/monitoring_lists")
     response = session.get(url)
@@ -55,24 +54,49 @@ def get_monitoring_list_details(list_id):
         print(f"Warning: Could not fetch details for ID {list_id}")
         return None
 
-# === Unique Component and its Usages ===
-def uniqueComponentUsages():
-    monitoring_dict = {}
-    for list_id in get_monitoring_list_ids():
-        components = get_monitoring_list_details(list_id)
-        monitoring_dict[list_id] = components
 
+def get_component_details(comp_id):
+    url = urljoin(API_BASE_URL, f"public/components/{comp_id}")
+    response = session.get(url)
+    if response.status_code == 200:
+        comp = response.json()
+        return {
+            "component_id ": comp.get("component_id"),
+            "component_name": comp.get("component_name"),
+            "monitored_since": comp.get("monitored_since"),
+            "eol_date": comp.get("eol_date")
+        }
+    else:
+        print(f"Warning: Could not fetch component details for ID {comp_id}")
+        return None
+    
+
+def unique_component_usages_with_details():
     component_usage = defaultdict(int)
-    for list_id, components in monitoring_dict.items():
-        unique_components = set(components)
-        for component in unique_components:
-            component_usage[component] += 1
+    component_details_dict = {}
 
-    component_usage = dict(component_usage)
-    return component_usage
+    for list_id in get_monitoring_list_ids():
+        component_ids = get_monitoring_list_details(list_id)
+        unique_components_in_list = set(component_ids)
+        for comp_id in unique_components_in_list:
+            component_usage[comp_id] += 1
+            if comp_id not in component_details_dict:
+                details = get_component_details(comp_id)
+                if details:
+                    component_details_dict[comp_id] = details
+
+    details_with_usage = []
+    for comp_id, usage_count in component_usage.items():
+        details = component_details_dict.get(comp_id, {})
+        details["usage"] = usage_count
+        details_with_usage.append(details)
+
+    return details_with_usage
+
 
 def export_to_excel(component_usage, filename="monitoring_lists.xlsx"):
-    df = pd.DataFrame(list(component_usage.items()), columns=['Component', 'Usage Count'])
+    # df = pd.DataFrame(list(component_usage.items()), columns=['Component', 'Usage Count'])
+    df = pd.DataFrame(component_usage)
     df.to_excel(filename, index=False)
     print(f"Exported {len(component_usage)} records to {filename}")
 
@@ -82,8 +106,7 @@ def export_to_json(data, filename="monitoring_lists.json"):
     print(f"Exported {len(data)} records to {filename}")
 
 def main():
-    unique_usage_dict = uniqueComponentUsages()
-
+    unique_usage_dict = unique_component_usages_with_details()
     if unique_usage_dict:
         export_to_excel(unique_usage_dict)
         export_to_json(unique_usage_dict)
